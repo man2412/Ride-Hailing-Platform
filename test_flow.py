@@ -113,9 +113,34 @@ async def main():
             raise Exception("Ride ID not found")
 
         # ---------------------------------------------------
-        print("\n7️⃣ Driver accepts ride...")
+        print("\n7️⃣ Waiting for matching (polling ride status)...")
+        trip_id = None
+        matched_driver_id = None
+        for attempt in range(10):
+            status_resp = await client.get(
+                f"{BASE_URL}/v1/rides/{ride_id}",
+                headers=rider_headers,
+            )
+            await safe_request(status_resp, f"Get Ride Status (attempt {attempt + 1})")
+            status_body = status_resp.json()
+            ride_status = status_body.get("status")
+            driver_brief = status_body.get("driver") or {}
+            matched_driver_id = driver_brief.get("id")
+
+            if ride_status == "MATCHED" and matched_driver_id:
+                print(f"Ride matched to driver {matched_driver_id}, proceeding to accept.")
+                break
+
+            await asyncio.sleep(0.5)
+        else:
+            raise Exception("Ride was not matched to any driver in time")
+
+        accept_driver_id = matched_driver_id or driver_id
+
+        # ---------------------------------------------------
+        print("\n8️⃣ Driver accepts ride...")
         resp = await client.post(
-            f"{BASE_URL}/v1/drivers/{driver_id}/accept",
+            f"{BASE_URL}/v1/drivers/{accept_driver_id}/accept",
             json={"ride_id": ride_id},
             headers=driver_headers,
         )
@@ -125,7 +150,7 @@ async def main():
         trip_id = res_json.get("trip_id") or ride_id
 
         # ---------------------------------------------------
-        print("\n8️⃣ Ending Trip...")
+        print("\n9️⃣ Ending Trip...")
         resp = await client.post(
             f"{BASE_URL}/v1/trips/{trip_id}/end",
             json={"final_lat": 13.0827, "final_lng": 80.2707},
@@ -133,8 +158,13 @@ async def main():
         )
         await safe_request(resp, "End Trip")
 
+        end_data = resp.json()
+        total_fare = end_data.get("total_fare")
+        if total_fare is None:
+            raise Exception("total_fare missing from end trip response")
+
         # ---------------------------------------------------
-        print("\n9️⃣ Rider pays...")
+        print("\n🔟 Rider pays...")
         resp = await client.post(
             f"{BASE_URL}/v1/payments",
             headers={
@@ -144,7 +174,7 @@ async def main():
             json={
                 "trip_id": trip_id,
                 "payment_method": "card",
-                "amount": 480.00,
+                "amount": total_fare,
             },
         )
         await safe_request(resp, "Payment")

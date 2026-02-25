@@ -90,7 +90,6 @@ async def create_ride(
             pickup_lng=payload.pickup_lng,
             tier=payload.tier.value,
             redis=redis,
-            db=db,
         )
     )
 

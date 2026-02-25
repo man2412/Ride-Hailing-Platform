@@ -17,6 +17,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.database import AsyncSessionLocal
 from app.models.driver import Driver
 from app.models.ride import Ride
 from app.models.trip import Trip
@@ -32,50 +33,60 @@ async def run_matching(
     pickup_lng: float,
     tier: str,
     redis: aioredis.Redis,
-    db: AsyncSession,
 ) -> bool:
     """
     Attempts to find and assign a driver for the given ride.
     Returns True on success, False if no driver found.
     """
-    candidates = await geo_nearby_drivers(
-        redis, tier, pickup_lat, pickup_lng,
-        radius_km=settings.matching_radius_km,
-        count=settings.matching_max_retries * 5,
-    )
+    async with AsyncSessionLocal() as db:
+        candidates = await geo_nearby_drivers(
+            redis,
+            tier,
+            pickup_lat,
+            pickup_lng,
+            radius_km=settings.matching_radius_km,
+            count=settings.matching_max_retries * 5,
+        )
 
-    if not candidates:
+        if not candidates:
+            await _cancel_ride(ride_id, db)
+            return False
+
+        for driver_id in candidates:
+            lock_key = f"driver:{driver_id}:lock"
+            acquired = await redis.set(
+                lock_key,
+                ride_id,
+                nx=True,
+                px=settings.matching_timeout_seconds * 1000,
+            )
+            if not acquired:
+                continue  # driver locked by another ride
+
+            # Verify driver is still available in DB (ground truth)
+            driver = await db.get(Driver, driver_id)
+            if driver is None or driver.status != "available":
+                await redis.delete(lock_key)
+                continue
+
+            # Atomic assignment
+            try:
+                assigned = await _assign_driver(ride_id, driver_id, db)
+                if assigned:
+                    logger.info("Matched ride=%s to driver=%s", ride_id, driver_id)
+                    # Invalidate cached ride status
+                    await cache_delete(redis, f"ride:{ride_id}:status")
+                    return True
+            except Exception as exc:
+                logger.error(
+                    "Assignment error ride=%s driver=%s: %s", ride_id, driver_id, exc
+                )
+                await redis.delete(lock_key)
+                continue
+
+        # All candidates exhausted
         await _cancel_ride(ride_id, db)
         return False
-
-    for driver_id in candidates:
-        lock_key = f"driver:{driver_id}:lock"
-        acquired = await redis.set(lock_key, ride_id, nx=True, px=settings.matching_timeout_seconds * 1000)
-        if not acquired:
-            continue  # driver locked by another ride
-
-        # Verify driver is still available in DB (ground truth)
-        driver = await db.get(Driver, driver_id)
-        if driver is None or driver.status != "available":
-            await redis.delete(lock_key)
-            continue
-
-        # Atomic assignment
-        try:
-            assigned = await _assign_driver(ride_id, driver_id, db)
-            if assigned:
-                logger.info("Matched ride=%s to driver=%s", ride_id, driver_id)
-                # Invalidate cached ride status
-                await cache_delete(redis, f"ride:{ride_id}:status")
-                return True
-        except Exception as exc:
-            logger.error("Assignment error ride=%s driver=%s: %s", ride_id, driver_id, exc)
-            await redis.delete(lock_key)
-            continue
-
-    # All candidates exhausted
-    await _cancel_ride(ride_id, db)
-    return False
 
 
 async def _assign_driver(ride_id: str, driver_id: str, db: AsyncSession) -> bool:
@@ -118,6 +129,7 @@ async def _assign_driver(ride_id: str, driver_id: str, db: AsyncSession) -> bool
         )
         db.add(trip)
 
+    await db.commit()
     return True
 
 
