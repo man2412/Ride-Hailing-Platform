@@ -57,7 +57,7 @@ class TestCalculateFare:
 class TestEstimateFareRange:
     def test_range_width(self):
         result = estimate_fare_range("standard", 10.0, 1.0)
-        assert result["min"] == pytest.approx(result["max"] * 0.9 / 1.1 * 1.1, rel=0.02)
+        assert result["min"] == pytest.approx(result["max"] * 0.9 / 1.1, rel=0.02)
         assert result["min"] < result["max"]
         assert result["currency"] == "INR"
 

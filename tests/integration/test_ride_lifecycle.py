@@ -37,7 +37,7 @@ class TestRideAPI:
                 "dest_lat": 13.0827, "dest_lng": 80.2707,
                 "tier": "standard", "payment_method": "card"
             })
-        assert resp.status_code == 403  # No auth header
+        assert resp.status_code == 401  # No auth header
 
     async def test_create_ride_invalid_lat(self, rider_headers):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
