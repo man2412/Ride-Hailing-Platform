@@ -2,13 +2,13 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials #HTTPAuthorizationCredentials is the object that holds the token in the request header
 from jose import JWTError, jwt
 
 from app.config import get_settings
 
 settings = get_settings()
-bearer_scheme = HTTPBearer(auto_error=False)
+bearer_scheme = HTTPBearer(auto_error=False) #auto_error=False means that the middleware will not raise an exception if the token is missing, it will just return None
 
 
 def create_access_token(data: dict) -> str:

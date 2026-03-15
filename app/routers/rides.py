@@ -75,9 +75,9 @@ async def create_ride(
         idempotency_key=idempotency_key,
     )
     db.add(ride)
-    await db.flush()  # get ride.id before commit
+    await db.flush()  # Sends pending changes in the session to the database as SQL but does not commit the transaction. used toget ride.id before commit
     await db.commit()
-    await db.refresh(ride)
+    await db.refresh(ride) #after commit(), db.refresh(ride) makes sure ride.created_at (and any other server-set columns) are up to date on the object before you build the response.
 
     # 5. Increment surge demand counter
     await increment_demand(redis, payload.tier.value)

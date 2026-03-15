@@ -1,25 +1,25 @@
 """
 FastAPI application factory with New Relic APM, CORS, lifespan, and all routers.
 """
-import logging
-import os
+import logging #logging, startup/shutdown and exc handler
+import os #for get env
 
 # New Relic must be initialized BEFORE any other imports that it instruments.
 if os.getenv("NEW_RELIC_LICENSE_KEY"):
     import newrelic.agent
     newrelic.agent.initialize("newrelic.ini")
 
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager #lifespan async context manager
 
-from fastapi import FastAPI, Request, status
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Request, status #app class, type for request object in exc handler, status codes
+from fastapi.middleware.cors import CORSMiddleware #Middleware that adds CORS headers so browsers can call the API from other origins 
 from fastapi.responses import JSONResponse
 
-from app.config import get_settings
+from app.config import get_settings #get settings from .env
 from app.redis_client import get_redis, close_redis
 from app.routers import rides, drivers, trips, payments
 
-settings = get_settings()
+settings = get_settings() #get settings from .env, cached using lru_cache
 logger = logging.getLogger(__name__)
 
 logging.basicConfig(

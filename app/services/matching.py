@@ -57,8 +57,8 @@ async def run_matching(
             acquired = await redis.set(
                 lock_key,
                 ride_id,
-                nx=True,
-                px=settings.matching_timeout_seconds * 1000,
+                nx=True, #nx=True means that the key will only be set if it does not exist
+                px=settings.matching_timeout_seconds * 1000, #px=settings.matching_timeout_seconds * 1000 means that the key will be deleted after the timeout seconds
             )
             if not acquired:
                 continue  # driver locked by another ride

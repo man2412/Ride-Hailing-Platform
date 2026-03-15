@@ -7,7 +7,7 @@ from app.database import Base
 
 class Driver(Base):
     __tablename__ = "drivers"
-
+    #UUIDs let every app instance generate unique IDs without a shared counter, so the system scales horizontally and works across regions without ID clashes. But not human friendly and are long
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     phone: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
